@@ -10,6 +10,7 @@ from exceptions import ApiServiceError
 ERROR = "404"
 
 API_TOKEN = os.getenv("OPEN_WEATHER_API_TOKEN")
+
 OPENWEATHER_URL_INPLACE = (
     "https://api.openweathermap.org/data/2.5/weather?"
     "lat={latitude}&lon={longitude}&"

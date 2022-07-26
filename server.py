@@ -1,13 +1,15 @@
 import logging
 import os
 import time
+
 from aiogram import Bot, Dispatcher, executor, types
 from weather_api_service import get_openweather_response, get_weather, get_openweather_city_response, \
     Coordinates, ERROR, get_coordinates_by_city
 from timezoneutils import timezone, sun_condition
 from weather_repr import weather_repr, weather_repr_city
-API_TOKEN = os.getenv("TELEGRAM_API_TOKEN")
 
+
+API_TOKEN = os.getenv("TELEGRAM_API_TOKEN")
 
 # configure logging
 logging.basicConfig(level=logging.INFO)
