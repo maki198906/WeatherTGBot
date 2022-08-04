@@ -10,12 +10,25 @@ To run the bot install all necessary packages
 ```bash
 pip install -r requirements.txt
 ```
-Obtain your own OpenWeather/Telegram API Tokens
+Obtain your own OpenWeather/Telegram API Tokens:
+
+`OPEN_WEATHER_API_TOKEN`
+
+`TELEGRAM_API_TOKEN`
 
 Then execute ```server.py```
 
 ```bash
 python server.py
 ```
+
+This Bot supports Docker:
+
+In order to launch Bot run commands as follows:
+```bash
+docker build -t tgweather ./
+docker run -d --name tgbot
+```
+**NOTE:** First fill in Tokens in `Dockerfile`
 
 You can check out how it works finding **@NeedWeatherInPlaceBot** in Telegram
