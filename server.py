@@ -55,8 +55,8 @@ async def weather_by_location(message: types.Message):
                          f"Local time {local_time}\n"
                          f"{'*' * 10}\n"
                          f"{weather_represent}"
-                         f"Sunrise_new {sun_conditions.sunrise.strftime('%H:%M')}\n"
-                         f"Sunset_new {sun_conditions.sunset.strftime('%H:%M')}",
+                         f"Sunrise {sun_conditions.sunrise.strftime('%H:%M')}\n"
+                         f"Sunset {sun_conditions.sunset.strftime('%H:%M')}",
                          reply_markup=types.ReplyKeyboardRemove())
 
 

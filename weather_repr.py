@@ -10,8 +10,7 @@ def weather_repr(weather: Weather) -> str:
             f"Max temperature: {weather.temperature_max}°C\n"
             f"Min temperature: {weather.temperature_min}°C\n"
             f"Humidity: {weather.humidity}%\n"
-            f"Sunrise: {weather.sunrise.strftime('%H:%M')}\n"
-            f"Sunset: {weather.sunset.strftime('%H:%M')}\n")
+            )
 
 
 def weather_repr_city(weather: Weather) -> str:
