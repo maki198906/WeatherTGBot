@@ -45,13 +45,19 @@ async def weather_by_location(message: types.Message):
     coordinates = Coordinates(*map(lambda x: round(x, 2), [lat, lon]))
     openweather_response = get_openweather_response(coordinates.latitude, coordinates.longitude)
     weather = get_weather(openweather_response)
+    sun_conditions = sun_condition(sunrise=time.mktime(weather.sunrise.timetuple()),
+                                   sunset=time.mktime(weather.sunset.timetuple()),
+                                   coordinates=coordinates)
     area, local_time = timezone(coordinates)
     weather_represent = weather_repr(weather)
 
     await message.answer(f"Time zone {area}\n"
                          f"Local time {local_time}\n"
                          f"{'*' * 10}\n"
-                         f"{weather_represent}", reply_markup=types.ReplyKeyboardRemove())
+                         f"{weather_represent}"
+                         f"Sunrise_new {sun_conditions.sunrise.strftime('%H:%M')}\n"
+                         f"Sunset_new {sun_conditions.sunset.strftime('%H:%M')}",
+                         reply_markup=types.ReplyKeyboardRemove())
 
 
 @dp.message_handler(commands=['inplace'])
