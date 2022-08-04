@@ -27,7 +27,7 @@ This Bot supports Docker:
 In order to launch Bot run commands as follows:
 ```bash
 docker build -t tgweather ./
-docker run -d --name tgbot
+docker run -d --name tgbot tgweather
 ```
 **NOTE:** First fill in Tokens in `Dockerfile`
 
