@@ -7,14 +7,19 @@ from weather_api_service import get_openweather_response, get_weather, get_openw
     Coordinates, ERROR, get_coordinates_by_city
 from timezoneutils import timezone, sun_condition
 from weather_repr import weather_repr, weather_repr_city
+from exceptions import WrongInput
+from loguru import logger
 
+
+# initialize logging file to catch errors
+logger.add("log_errors.log", format="{time} {level} {message}", rotation="5 MB", compression="zip")
 
 API_TOKEN = os.getenv("TELEGRAM_API_TOKEN")
 
 # configure logging
 logging.basicConfig(level=logging.INFO)
 
-# Initialize bot and dispatcher
+# initialize bot and dispatcher
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher(bot)
 
@@ -68,6 +73,7 @@ async def weather_me(message: types.Message):
 
 
 @dp.message_handler()
+@logger.catch
 async def weather_by_city(message: types.Message):
     """Represents weather in Telegram"""
     openweather_city_response = get_openweather_city_response(message.text)
@@ -88,6 +94,7 @@ async def weather_by_city(message: types.Message):
     else:
         await message.answer('Oops, looks like there is no such city\n'
                              'Check the spelling')
+        raise WrongInput(f'City "{message.text}" is not defined')
 
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)
