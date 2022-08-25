@@ -1,23 +1,21 @@
-import logging
+# import logging
 import os
 import time
 
+from loguru import logger
 from aiogram import Bot, Dispatcher, executor, types
-from weather_api_service import get_openweather_response, get_weather, get_openweather_city_response, \
-    Coordinates, ERROR, get_coordinates_by_city
+
+from weather_api_service import (get_openweather_response, get_weather, get_openweather_city_response,
+                                 Coordinates, ERROR, get_coordinates_by_city)
 from timezoneutils import timezone, sun_condition
 from weather_repr import weather_repr, weather_repr_city
 from exceptions import WrongInput
-from loguru import logger
-
 
 # initialize logging file to catch errors
-logger.add("log_errors.log", format="{time} {level} {message}", rotation="5 MB", compression="zip")
+logger.add("log_errors.log", format="{time} {level} {message}",
+           rotation="5 MB", compression="zip")
 
 API_TOKEN = os.getenv("TELEGRAM_API_TOKEN")
-
-# configure logging
-logging.basicConfig(level=logging.INFO)
 
 # initialize bot and dispatcher
 bot = Bot(token=API_TOKEN)
@@ -95,6 +93,7 @@ async def weather_by_city(message: types.Message):
         await message.answer('Oops, looks like there is no such city\n'
                              'Check the spelling')
         raise WrongInput(f'City "{message.text}" is not defined')
+
 
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True)

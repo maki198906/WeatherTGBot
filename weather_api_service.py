@@ -1,9 +1,11 @@
 import requests
-from requests import ConnectionError
 import os
+
+from requests import ConnectionError
 from datetime import datetime
 from typing import NamedTuple, Literal
 from enum import Enum
+
 from exceptions import ApiServiceError
 
 # this code shows up when city not found

@@ -1,9 +1,10 @@
 import timezonefinder
 import pytz
 
-from weather_api_service import Coordinates
 from typing import NamedTuple
 from datetime import datetime
+
+from weather_api_service import Coordinates
 
 
 class SunTime(NamedTuple):
