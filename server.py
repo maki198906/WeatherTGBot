@@ -2,6 +2,7 @@
 import os
 import time
 
+from dotenv import load_dotenv
 from loguru import logger
 from aiogram import Bot, Dispatcher, executor, types
 
@@ -15,7 +16,10 @@ from exceptions import WrongInput
 logger.add("log_errors.log", format="{time} {level} {message}",
            rotation="5 MB", compression="zip")
 
-API_TOKEN = os.getenv("TELEGRAM_API_TOKEN")
+# import a .env file into a Python application
+load_dotenv()
+
+API_TOKEN = os.environ["TELEGRAM_API_TOKEN"]
 
 # initialize bot and dispatcher
 bot = Bot(token=API_TOKEN)

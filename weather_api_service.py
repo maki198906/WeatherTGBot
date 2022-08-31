@@ -1,6 +1,7 @@
 import requests
 import os
 
+from dotenv import load_dotenv
 from requests import ConnectionError
 from datetime import datetime
 from typing import NamedTuple, Literal
@@ -11,7 +12,10 @@ from exceptions import ApiServiceError
 # this code shows up when city not found
 ERROR = "404"
 
-API_TOKEN = os.getenv("OPEN_WEATHER_API_TOKEN")
+# import a .env file into a Python application
+load_dotenv()
+
+API_TOKEN = os.environ["OPEN_WEATHER_API_TOKEN"]
 
 OPENWEATHER_URL_INPLACE = (
     "https://api.openweathermap.org/data/2.5/weather?"
