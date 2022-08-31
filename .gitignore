@@ -2,4 +2,4 @@
 __pycache__/
 W_Teleg_env/
 *.log
-.env
+*.env
