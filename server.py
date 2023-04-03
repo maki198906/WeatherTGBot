@@ -6,7 +6,8 @@ from loguru import logger
 from aiogram import Bot, Dispatcher, executor, types
 
 from weather_api_service import (get_openweather_response, get_weather, get_openweather_city_response,
-                                 Coordinates, ERROR, get_coordinates_by_city)
+                                 Coordinates, ERROR, get_coordinates_by_city, get_openweather_air_response,
+                                 get_air_quality_type)
 from timezoneutils import timezone, sun_condition
 from weather_repr import weather_repr, weather_repr_city
 from exceptions import WrongInput
@@ -47,19 +48,22 @@ async def weather_by_location(message: types.Message):
     lon = message.location.longitude
     coordinates = Coordinates(*map(lambda x: round(x, 2), [lat, lon]))
     openweather_response = get_openweather_response(coordinates.latitude, coordinates.longitude)
+    air_index_response = get_openweather_air_response(coordinates.latitude, coordinates.longitude)
     weather = get_weather(openweather_response)
+    air_index_quality = get_air_quality_type(air_index_response)
     sun_conditions = sun_condition(sunrise=time.mktime(weather.sunrise.timetuple()),
                                    sunset=time.mktime(weather.sunset.timetuple()),
                                    coordinates=coordinates)
     area, local_time = timezone(coordinates)
     weather_represent = weather_repr(weather)
 
-    await message.answer(f"Time zone {area}\n"
-                         f"Local time {local_time}\n"
+    await message.answer(f"Time zone: {area}\n"
+                         f"Local time: {local_time}\n"
+                         f"Air Index Quality: {air_index_quality.value}\n"
                          f"{'*' * 10}\n"
                          f"{weather_represent}"
-                         f"Sunrise {sun_conditions.sunrise.strftime('%H:%M')}\n"
-                         f"Sunset {sun_conditions.sunset.strftime('%H:%M')}",
+                         f"Sunrise: {sun_conditions.sunrise.strftime('%H:%M')}\n"
+                         f"Sunset: {sun_conditions.sunset.strftime('%H:%M')}",
                          reply_markup=types.ReplyKeyboardRemove())
 
 
@@ -77,14 +81,17 @@ async def weather_by_city(message: types.Message):
     openweather_city_response = get_openweather_city_response(message.text)
     if openweather_city_response['cod'] != ERROR:
         coordinates = get_coordinates_by_city(openweather_city_response)
+        air_index_response = get_openweather_air_response(coordinates.latitude, coordinates.longitude)
+        air_index_quality = get_air_quality_type(air_index_response)
         area, local_time = timezone(coordinates)
         weather = get_weather(openweather_city_response)
         sun_conditions = sun_condition(sunrise=time.mktime(weather.sunrise.timetuple()),
                                        sunset=time.mktime(weather.sunset.timetuple()),
                                        coordinates=coordinates)
         weather_represent = weather_repr_city(weather)
-        await message.answer(f"Time zone {area}\n"
-                             f"Local time {local_time}\n"
+        await message.answer(f"Time zone: {area}\n"
+                             f"Local time: {local_time}\n"
+                             f"Air Index Quality: {air_index_quality.value}\n"
                              f"{'*' * 10}\n"
                              f"{weather_represent}\n"
                              f"Sunrise {sun_conditions.sunrise.strftime('%H:%M')}\n"

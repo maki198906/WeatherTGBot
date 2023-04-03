@@ -14,16 +14,20 @@ ERROR = "404"
 API_TOKEN = os.getenv("OPEN_WEATHER_API_TOKEN")
 
 OPENWEATHER_URL_INPLACE = (
-    "https://api.openweathermap.org/data/2.5/weather?"
-    "lat={latitude}&lon={longitude}&"
-    "appid=" + API_TOKEN + "&lang=en&"
-    "units=metric"
+        "https://api.openweathermap.org/data/2.5/weather?"
+        "lat={latitude}&lon={longitude}&"
+        "appid=" + API_TOKEN + "&lang=en&"
+                               "units=metric"
 )
 
 OPENWEATHER_URL_BY_CITY = (
-    "https://api.openweathermap.org/data/2.5/weather?"
-    "q={city}&appid=" + API_TOKEN + "&units=metric"
+        "https://api.openweathermap.org/data/2.5/weather?"
+        "q={city}&appid=" + API_TOKEN + "&units=metric"
 )
+
+OPENWEATHER_URL_AIR = ("http://api.openweathermap.org/data/2.5/air_pollution?"
+                       "lat={latitude}&lon={longitude}&"
+                       "appid=" + API_TOKEN)
 
 Celsius = float
 Humidity = int
@@ -44,6 +48,14 @@ class WeatherType(Enum):
     CLEAR = 'Clear \u2600️'
     FOG = 'Fog \U0001F32B'
     CLOUDS = 'Clouds \u2601'
+
+
+class AirQualityType(Enum):
+    GOOD = 'Good 😊'
+    FAIR = 'Fair 😌'
+    MODERATE = 'Moderate 😐'
+    POOR = 'Poor 😞'
+    VERY_POOR = 'Very Poor 😢'
 
 
 class Weather(NamedTuple):
@@ -69,6 +81,15 @@ def get_openweather_response(latitude: float, longitude: float) -> dict:
     """Returns raw weather data by GEO"""
     url = requests.get(OPENWEATHER_URL_INPLACE.format(
         latitude=latitude, longitude=longitude))
+    try:
+        return url.json()
+    except ConnectionError:
+        raise ApiServiceError
+
+
+def get_openweather_air_response(latitude: float, longitude: float) -> dict:
+    """ Return Air Quality Index"""
+    url = requests.get(OPENWEATHER_URL_AIR.format(latitude=latitude, longitude=longitude))
     try:
         return url.json()
     except ConnectionError:
@@ -108,7 +129,7 @@ def _parse_openweather_response(openweather_dict: dict) -> Weather:
 
 def _parse_temp(openweather_dict: dict,
                 temp: Literal['temp'] or Literal['feels_like'] or
-                Literal['temp_max'] or Literal['temp_min']) -> Celsius:
+                      Literal['temp_max'] or Literal['temp_min']) -> Celsius:
     return openweather_dict['main'][temp]
 
 
@@ -133,6 +154,25 @@ def _parse_weather_type(openweather_dict: dict) -> WeatherType:
     for _id, _weather_type in weather_types.items():
         if weather_type_id.startswith(_id):
             return _weather_type
+    raise ApiServiceError
+
+
+def get_air_quality_type(openweather_dict: dict) -> AirQualityType:
+    """Returns air quality type using AQI"""
+    try:
+        air_type_id = str(openweather_dict["list"][0]["main"]["aqi"])
+    except (IndexError, KeyError):
+        raise ApiServiceError
+    air_types = {
+        "1": AirQualityType.GOOD,
+        "2": AirQualityType.FAIR,
+        "3": AirQualityType.MODERATE,
+        "4": AirQualityType.POOR,
+        "5": AirQualityType.VERY_POOR
+    }
+    for _id, _air_type in air_types.items():
+        if air_type_id.startswith(_id):
+            return _air_type
     raise ApiServiceError
 
 
