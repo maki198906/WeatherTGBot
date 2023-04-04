@@ -26,9 +26,13 @@ This Bot supports Docker:
 
 In order to launch Bot run commands as follows:
 ```bash
-docker build -t tgweather ./
+docker build -t tgweather \
+--build-arg TELEGRAM=$TELEGRAM_API_TOKEN \
+--build-arg OPEN_WEATHER=$OPEN_WEATHER_API_TOKEN \
+--no-cache ./
+
 docker run -d --name tgbot tgweather
 ```
-**NOTE:** First fill in Tokens in `Dockerfile`
+**NOTE:** First make sure having `OPEN_WEATHER_API_TOKEN` and `TELEGRAM_API_TOKEN` in your environment
 
 You can check out how it works finding **@NeedWeatherInPlaceBot** in Telegram
