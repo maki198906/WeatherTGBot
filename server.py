@@ -36,9 +36,15 @@ async def send_welcome(message: types.Message):
 def get_keyboard():
     """Initiates button to share with GEO"""
     keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    button = types.KeyboardButton("🌍 Share with GEO", request_location=True)
-    keyboard.add(button)
+    button1 = types.KeyboardButton("🌍 Share with GEO", request_location=True)
+    button2 = types.KeyboardButton("🚫 Discard")
+    keyboard.add(button1, button2)
     return keyboard
+
+
+@dp.message_handler(lambda message: message.text == "🚫 Discard")
+async def discard(message: types.Message):
+    await message.reply("Ok pal, I got it!", reply_markup=types.ReplyKeyboardRemove())
 
 
 @dp.message_handler(content_types=['location'])
@@ -62,8 +68,9 @@ async def weather_by_location(message: types.Message):
                          f"Air Index Quality: {air_index_quality.value}\n"
                          f"{'*' * 10}\n"
                          f"{weather_represent}"
-                         f"Sunrise: {sun_conditions.sunrise.strftime('%H:%M')}\n"
-                         f"Sunset: {sun_conditions.sunset.strftime('%H:%M')}",
+                         f"{'*' * 10}\n"
+                         f"🌅: {sun_conditions.sunrise.strftime('%H:%M')}\n"
+                         f"🌇: {sun_conditions.sunset.strftime('%H:%M')}",
                          reply_markup=types.ReplyKeyboardRemove())
 
 
@@ -93,9 +100,10 @@ async def weather_by_city(message: types.Message):
                              f"Local time: {local_time}\n"
                              f"Air Index Quality: {air_index_quality.value}\n"
                              f"{'*' * 10}\n"
-                             f"{weather_represent}\n"
-                             f"Sunrise {sun_conditions.sunrise.strftime('%H:%M')}\n"
-                             f"Sunset {sun_conditions.sunset.strftime('%H:%M')}")
+                             f"{weather_represent}"
+                             f"{'*' * 10}\n"
+                             f"🌅: {sun_conditions.sunrise.strftime('%H:%M')}\n"
+                             f"🌇: {sun_conditions.sunset.strftime('%H:%M')}")
         await bot.send_location(message.chat.id, latitude=coordinates.latitude, longitude=coordinates.longitude)
     else:
         await message.answer('Oops, looks like there is no such city\n'
