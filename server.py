@@ -44,7 +44,7 @@ def get_keyboard():
 
 @dp.message_handler(lambda message: message.text == "🚫 Discard")
 async def discard(message: types.Message):
-    await message.reply("Ok pal, I got it!", reply_markup=types.ReplyKeyboardRemove())
+    await message.answer("Ok pal, I got it!", reply_markup=types.ReplyKeyboardRemove())
 
 
 @dp.message_handler(content_types=['location'])
