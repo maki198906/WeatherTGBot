@@ -96,6 +96,7 @@ async def weather_by_city(message: types.Message):
                              f"{weather_represent}\n"
                              f"Sunrise {sun_conditions.sunrise.strftime('%H:%M')}\n"
                              f"Sunset {sun_conditions.sunset.strftime('%H:%M')}")
+        await bot.send_location(message.chat.id, latitude=coordinates.latitude, longitude=coordinates.longitude)
     else:
         await message.answer('Oops, looks like there is no such city\n'
                              'Check the spelling')
