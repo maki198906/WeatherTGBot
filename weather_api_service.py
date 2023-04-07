@@ -77,6 +77,12 @@ def get_weather(openweather_response: dict) -> Weather:
     return weather
 
 
+def get_weather_random(openweather_response: dict) -> Weather:
+    """Returns parsed weather data"""
+    weather = _parse_openweather_response_random(openweather_response)
+    return weather
+
+
 def get_openweather_response(latitude: float, longitude: float) -> dict:
     """Returns raw weather data by GEO"""
     url = requests.get(OPENWEATHER_URL_INPLACE.format(
@@ -124,6 +130,21 @@ def _parse_openweather_response(openweather_dict: dict) -> Weather:
         sunset=_parse_sun_time(openweather_dict, 'sunset'),
         city=_parse_city(openweather_dict),
         country=_parse_country(openweather_dict)
+    )
+
+
+def _parse_openweather_response_random(openweather_dict: dict) -> Weather:
+    return Weather(
+        temperature=_parse_temp(openweather_dict, 'temp'),
+        feels_like=_parse_temp(openweather_dict, 'feels_like'),
+        temperature_min=_parse_temp(openweather_dict, 'temp_min'),
+        temperature_max=_parse_temp(openweather_dict, 'temp_max'),
+        humidity=_parse_humidity(openweather_dict),
+        weather_type=_parse_weather_type(openweather_dict),
+        sunrise=_parse_sun_time(openweather_dict, 'sunrise'),
+        sunset=_parse_sun_time(openweather_dict, 'sunset'),
+        city="",
+        country=""
     )
 
 
