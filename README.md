@@ -1,9 +1,9 @@
-## This is WeWeather TG Bot that shows the weather and more around you
+## WeWeather TG Bot
 
 <img src="weather.png" style="height: 100px; width:100px"/>
 
 
-This bot utilizes your GPS coordinates/ or city you're requesting to show the weather conditions using [OpenWeather](https://openweathermap.org/api)
+This bot utilizes your GPS coordinates/ or city /or even a random spot to show the weather conditions and more using [OpenWeather](https://openweathermap.org/api)
 
 To run the bot install all necessary packages
 
