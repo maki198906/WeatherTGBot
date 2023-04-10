@@ -3,7 +3,7 @@ import os
 
 from requests import ConnectionError
 from datetime import datetime
-from typing import NamedTuple, Literal
+from typing import NamedTuple, Literal, Optional
 from enum import Enum
 
 from exceptions import ApiServiceError
@@ -31,8 +31,11 @@ OPENWEATHER_URL_AIR = ("http://api.openweathermap.org/data/2.5/air_pollution?"
 
 Celsius = float
 Humidity = int
-City = str
-Country = str
+
+
+class Locality:
+    city: Optional[str] = None
+    country: Optional[str] = None
 
 
 class Coordinates(NamedTuple):
@@ -67,8 +70,8 @@ class Weather(NamedTuple):
     weather_type: WeatherType
     sunrise: datetime
     sunset: datetime
-    city: City
-    country: Country
+    city: Locality
+    country: Locality
 
 
 def get_weather(openweather_response: dict) -> Weather:
@@ -182,15 +185,15 @@ def _parse_sun_time(
     return datetime.fromtimestamp(openweather_dict["sys"][time])
 
 
-def _parse_city(openweather_dict: dict) -> City:
+def _parse_city(openweather_dict: dict) -> Locality:
     try:
-        return openweather_dict.setdefault("name", "None")
+        return openweather_dict["name"]
     except KeyError:
         raise ApiServiceError
 
 
-def _parse_country(openweather_dict: dict) -> Country:
+def _parse_country(openweather_dict: dict) -> Locality:
     try:
-        return openweather_dict["sys"].setdefault("country", "None")
+        return openweather_dict["sys"].setdefault("country", Locality.country)
     except KeyError:
         raise ApiServiceError
