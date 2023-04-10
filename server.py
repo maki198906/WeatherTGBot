@@ -7,9 +7,9 @@ from aiogram import Bot, Dispatcher, executor, types
 
 from weather_api_service import (get_openweather_response, get_weather, get_openweather_city_response,
                                  Coordinates, ERROR, get_coordinates_by_city, get_openweather_air_response,
-                                 get_air_quality_type, get_weather_random)
+                                 get_air_quality_type)
 from timezoneutils import timezone, sun_condition
-from weather_repr import weather_repr, weather_repr_city, weather_repr_random
+from weather_repr import weather_repr, weather_repr_city
 from exceptions import WrongInput
 from random_weather import generate_random_coords
 
@@ -65,12 +65,12 @@ async def send_random_weather(callback: types.CallbackQuery):
     openweather_response = get_openweather_response(coordinates.latitude, coordinates.longitude)
     air_index_response = get_openweather_air_response(coordinates.latitude, coordinates.longitude)
     air_index_quality = get_air_quality_type(air_index_response)
-    weather = get_weather_random(openweather_response)
+    weather = get_weather(openweather_response)
     sun_conditions = sun_condition(sunrise=time.mktime(weather.sunrise.timetuple()),
                                    sunset=time.mktime(weather.sunset.timetuple()),
                                    coordinates=coordinates)
     area, local_time = timezone(coordinates)
-    weather_represent = weather_repr_random(weather)
+    weather_represent = weather_repr(weather)
     await callback.message.answer(f"Time zone: {area}\n"
                                   f"Local time: {local_time}\n"
                                   f"Air Index Quality: {air_index_quality.value}\n"
