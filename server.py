@@ -60,6 +60,7 @@ async def random_weather(message: types.Message):
 
 
 @dp.callback_query_handler(text='random_weather')
+@logger.catch
 async def send_random_weather(callback: types.CallbackQuery):
     coordinates = generate_random_coords()
     openweather_response = get_openweather_response(coordinates.latitude, coordinates.longitude)
@@ -85,6 +86,7 @@ async def send_random_weather(callback: types.CallbackQuery):
 
 
 @dp.message_handler(content_types=['location'])
+@logger.catch
 async def weather_by_location(message: types.Message):
     """Returns readable format of the weather """
     lat = message.location.latitude
