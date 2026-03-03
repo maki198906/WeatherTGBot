@@ -21,7 +21,7 @@ requests==2.32.3
 # Timezone & geo
 pytz==2024.2
 timezonefinder==6.5.9
-h3==3.7.7
+h3==4.1.0
 numpy==2.2.2
 
 # Emoji & country flags
