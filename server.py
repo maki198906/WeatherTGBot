@@ -1,9 +1,11 @@
-# import logging
+import asyncio
 import os
 import time
 
 from loguru import logger
-from aiogram import Bot, Dispatcher, executor, types
+from aiogram import Bot, Dispatcher, Router, F, types
+from aiogram.filters import Command
+from aiogram.enums import ParseMode, ContentType
 
 from weather_api_service import (get_openweather_response, get_weather, get_openweather_city_response,
                                  Coordinates, ERROR, get_coordinates_by_city, get_openweather_air_response,
@@ -19,12 +21,14 @@ logger.add("log_errors.log", format="{time} {level} {message}",
 
 API_TOKEN = os.getenv("TELEGRAM_API_TOKEN")
 
-# initialize bot and dispatcher
+# initialize bot, dispatcher and router
 bot = Bot(token=API_TOKEN)
-dp = Dispatcher(bot)
+dp = Dispatcher()
+router = Router()
+dp.include_router(router)
 
 
-@dp.message_handler(commands=['start', 'help'])
+@router.message(Command("start", "help"))
 async def send_welcome(message: types.Message):
     """Returns info what bot is about"""
     await message.answer("Hi!\nI'm <b>WeWeather</b> Bot\n"
@@ -32,34 +36,40 @@ async def send_welcome(message: types.Message):
                          "Just type the city you are looking for\n"
                          "or type /inplace so the weather around you pops up.\n"
                          "If you'd like to explore the weather at random spot type /random",
-                         parse_mode=types.ParseMode.HTML)
+                         parse_mode=ParseMode.HTML)
 
 
 def get_keyboard():
     """Initiates button to share with GEO"""
-    keyboard = types.ReplyKeyboardMarkup(resize_keyboard=True, input_field_placeholder='Share GEO or Discard')
-    button1 = types.KeyboardButton("🌍 Share GEO", request_location=True)
-    button2 = types.KeyboardButton("🚫 Discard")
-    keyboard.add(button1, button2)
+    keyboard = types.ReplyKeyboardMarkup(
+        keyboard=[
+            [
+                types.KeyboardButton(text="\U0001f30d Share GEO", request_location=True),
+                types.KeyboardButton(text="\U0001f6ab Discard"),
+            ]
+        ],
+        resize_keyboard=True,
+        input_field_placeholder="Share GEO or Discard",
+    )
     return keyboard
 
 
-@dp.message_handler(lambda message: message.text == "🚫 Discard")
+@router.message(F.text == "\U0001f6ab Discard")
 async def discard(message: types.Message):
     await message.answer("Ok pal, I got it!", reply_markup=types.ReplyKeyboardRemove())
 
 
-@dp.message_handler(commands=['random'])
+@router.message(Command("random"))
 async def random_weather(message: types.Message):
-    keyboard = types.InlineKeyboardMarkup()
-    keyboard.add(types.InlineKeyboardButton(
-        text="Click",
-        callback_data="random_weather")
+    keyboard = types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [types.InlineKeyboardButton(text="Click", callback_data="random_weather")]
+        ]
     )
-    await message.answer('To explore random weather just for fun click me', reply_markup=keyboard)
+    await message.answer("To explore random weather just for fun click me", reply_markup=keyboard)
 
 
-@dp.callback_query_handler(text='random_weather')
+@router.callback_query(F.data == "random_weather")
 @logger.catch
 async def send_random_weather(callback: types.CallbackQuery):
     coordinates = generate_random_coords()
@@ -78,17 +88,17 @@ async def send_random_weather(callback: types.CallbackQuery):
                                   f"{'*' * 10}\n"
                                   f"{weather_represent}"
                                   f"{'*' * 10}\n"
-                                  f"🌅: {sun_conditions.sunrise.strftime('%H:%M')}\n"
-                                  f"🌇: {sun_conditions.sunset.strftime('%H:%M')}",
-                                  parse_mode=types.ParseMode.HTML)
+                                  f"\U0001f305: {sun_conditions.sunrise.strftime('%H:%M')}\n"
+                                  f"\U0001f307: {sun_conditions.sunset.strftime('%H:%M')}",
+                                  parse_mode=ParseMode.HTML)
     await callback.message.answer_location(latitude=coordinates.latitude, longitude=coordinates.longitude)
     await callback.answer()
 
 
-@dp.message_handler(content_types=['location'])
+@router.message(F.content_type == ContentType.LOCATION)
 @logger.catch
 async def weather_by_location(message: types.Message):
-    """Returns readable format of the weather """
+    """Returns readable format of the weather"""
     lat = message.location.latitude
     lon = message.location.longitude
     coordinates = Coordinates(*map(lambda x: round(x, 2), [lat, lon]))
@@ -108,25 +118,25 @@ async def weather_by_location(message: types.Message):
                          f"{'*' * 10}\n"
                          f"{weather_represent}"
                          f"{'*' * 10}\n"
-                         f"🌅: {sun_conditions.sunrise.strftime('%H:%M')}\n"
-                         f"🌇: {sun_conditions.sunset.strftime('%H:%M')}",
+                         f"\U0001f305: {sun_conditions.sunrise.strftime('%H:%M')}\n"
+                         f"\U0001f307: {sun_conditions.sunset.strftime('%H:%M')}",
                          reply_markup=types.ReplyKeyboardRemove(),
-                         parse_mode=types.ParseMode.HTML)
+                         parse_mode=ParseMode.HTML)
 
 
-@dp.message_handler(commands=['inplace'])
+@router.message(Command("inplace"))
 async def weather_me(message: types.Message):
     """Invokes the button in Telegram"""
     reply = "Click on the button below to share your location"
     await message.answer(reply, reply_markup=get_keyboard())
 
 
-@dp.message_handler()
+@router.message()
 @logger.catch
 async def weather_by_city(message: types.Message):
     """Represents weather in Telegram"""
     openweather_city_response = get_openweather_city_response(message.text)
-    if openweather_city_response['cod'] != ERROR:
+    if openweather_city_response["cod"] != ERROR:
         coordinates = get_coordinates_by_city(openweather_city_response)
         air_index_response = get_openweather_air_response(coordinates.latitude, coordinates.longitude)
         air_index_quality = get_air_quality_type(air_index_response)
@@ -142,14 +152,17 @@ async def weather_by_city(message: types.Message):
                              f"{'*' * 10}\n"
                              f"{weather_represent}"
                              f"{'*' * 10}\n"
-                             f"🌅: {sun_conditions.sunrise.strftime('%H:%M')}\n"
-                             f"🌇: {sun_conditions.sunset.strftime('%H:%M')}")
+                             f"\U0001f305: {sun_conditions.sunrise.strftime('%H:%M')}\n"
+                             f"\U0001f307: {sun_conditions.sunset.strftime('%H:%M')}")
         await bot.send_location(message.chat.id, latitude=coordinates.latitude, longitude=coordinates.longitude)
     else:
-        await message.answer('Oops, looks like there is no such city\n'
-                             'Check the spelling')
+        await message.answer("Oops, looks like there is no such city\nCheck the spelling")
         raise WrongInput(f'City "{message.text}" is not defined')
 
 
-if __name__ == '__main__':
-    executor.start_polling(dp, skip_updates=True)
+async def main():
+    await dp.start_polling(bot)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
