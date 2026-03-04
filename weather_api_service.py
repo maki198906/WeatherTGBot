@@ -41,21 +41,21 @@ class Coordinates(NamedTuple):
 
 
 class WeatherType(Enum):
-    THUNDERSTORM = "Thunderstorm \U0001F329"
-    DRIZZLE = "Drizzle \U0001F327"
-    RAIN = "Rain \U0001F327"
-    SNOW = "Snow \U0001F328"
-    CLEAR = "Clear \u2600\uFE0F"
-    FOG = "Fog \U0001F32B"
-    CLOUDS = "Clouds \u2601"
+    THUNDERSTORM = "Thunderstorm \u26c8"
+    DRIZZLE = "Drizzle \U0001f326"
+    RAIN = "Rain \U0001f327"
+    SNOW = "Snow \u2744\ufe0f"
+    CLEAR = "Clear \u2600\ufe0f"
+    FOG = "Fog \U0001f32b"
+    CLOUDS = "Clouds \u26c5"
 
 
 class AirQualityType(Enum):
-    GOOD = "Good \U0001F60A"
-    FAIR = "Fair \U0001F60C"
-    MODERATE = "Moderate \U0001F610"
-    POOR = "Poor \U0001F61E"
-    VERY_POOR = "Very Poor \U0001F622"
+    GOOD = "Good \U0001f60a"
+    FAIR = "Fair \U0001f60c"
+    MODERATE = "Moderate \U0001f610"
+    POOR = "Poor \U0001f61e"
+    VERY_POOR = "Very Poor \U0001f622"
 
 
 class Weather(NamedTuple):
@@ -69,15 +69,44 @@ class Weather(NamedTuple):
     sunset: datetime
     city: Locality
     country: Locality
+    wind_speed: float = 0.0
+    pressure: int = 0
+
+
+class ForecastDay(NamedTuple):
+    date: str           # e.g. "2026-03-05"
+    temperature_min: Celsius
+    temperature_max: Celsius
+    weather_type: WeatherType
+    wind_speed: float
+
+
+_WEATHER_TYPE_MAP = {
+    "2": WeatherType.THUNDERSTORM,
+    "3": WeatherType.DRIZZLE,
+    "5": WeatherType.RAIN,
+    "6": WeatherType.SNOW,
+    "7": WeatherType.FOG,
+    "800": WeatherType.CLEAR,
+    "80": WeatherType.CLOUDS,
+}
+
+
+def _resolve_weather_type(weather_id: int) -> WeatherType:
+    id_str = str(weather_id)
+    for prefix, wtype in _WEATHER_TYPE_MAP.items():
+        if id_str.startswith(prefix):
+            return wtype
+    return WeatherType.CLOUDS
 
 
 def get_weather(openweather_response: dict) -> Weather:
-    """Returns parsed weather data"""
+    """Returns parsed weather data."""
     return _parse_openweather_response(openweather_response)
 
 
 def get_openweather_response(latitude: float, longitude: float) -> dict:
-    """Returns raw weather data by coordinates"""
+    """Returns raw weather data by coordinates."""
     url = (
         f"{OPENWEATHER_BASE}/weather?"
         f"lat={latitude}&lon={longitude}&"
@@ -90,7 +119,7 @@ def get_openweather_response(latitude: float, longitude: float) -> dict:
 
 
 def get_openweather_air_response(latitude: float, longitude: float) -> dict:
-    """Returns Air Quality Index"""
+    """Returns Air Quality Index."""
     url = (
         f"{OPENWEATHER_AIR_BASE}/air_pollution?"
         f"lat={latitude}&lon={longitude}&"
@@ -103,7 +132,7 @@ def get_openweather_air_response(latitude: float, longitude: float) -> dict:
 
 
 def get_openweather_city_response(city: str) -> dict:
-    """Returns raw weather data by city name"""
+    """Returns raw weather data by city name."""
     url = (
         f"{OPENWEATHER_BASE}/weather?"
         f"q={city}&appid={_api_token()}&units=metric"
@@ -112,6 +141,54 @@ def get_openweather_city_response(city: str) -> dict:
         return requests.get(url).json()
     except ConnectionError:
         raise ApiServiceError
+
+
+def get_forecast_response(city: str) -> dict:
+    """Returns 5-day / 3-hour forecast by city name."""
+    url = (
+        f"{OPENWEATHER_BASE}/forecast?"
+        f"q={city}&appid={_api_token()}&units=metric&lang=en"
+    )
+    try:
+        return requests.get(url).json()
+    except ConnectionError:
+        raise ApiServiceError
+
+
+def get_forecast_by_coords(latitude: float, longitude: float) -> dict:
+    """Returns 5-day / 3-hour forecast by coordinates."""
+    url = (
+        f"{OPENWEATHER_BASE}/forecast?"
+        f"lat={latitude}&lon={longitude}&appid={_api_token()}&units=metric&lang=en"
+    )
+    try:
+        return requests.get(url).json()
+    except ConnectionError:
+        raise ApiServiceError
+
+
+def parse_forecast(forecast_response: dict) -> list[ForecastDay]:
+    """Returns one ForecastDay per calendar day (prefers the noon slot)."""
+    days: dict[str, ForecastDay] = {}
+    for item in forecast_response.get("list", []):
+        dt_txt = item.get("dt_txt", "")
+        date = dt_txt[:10]
+        hour = dt_txt[11:13]
+        if not date:
+            continue
+        try:
+            entry = ForecastDay(
+                date=date,
+                temperature_min=item["main"]["temp_min"],
+                temperature_max=item["main"]["temp_max"],
+                weather_type=_resolve_weather_type(item["weather"][0]["id"]),
+                wind_speed=round(item["wind"]["speed"], 1),
+            )
+        except (KeyError, IndexError):
+            continue
+        if date not in days or hour == "12":
+            days[date] = entry
+    return list(days.values())[:5]
 
 
 def get_coordinates_by_city(openweather_city_response: dict) -> Coordinates:
@@ -132,6 +209,8 @@ def _parse_openweather_response(openweather_dict: dict) -> Weather:
         sunset=_parse_sun_time(openweather_dict, "sunset"),
         city=_parse_city(openweather_dict),
         country=_parse_country(openweather_dict),
+        wind_speed=round(openweather_dict.get("wind", {}).get("speed", 0.0), 1),
+        pressure=openweather_dict.get("main", {}).get("pressure", 0),
     )
 
 
@@ -148,26 +227,13 @@ def _parse_humidity(openweather_dict: dict) -> Humidity:
 
 def _parse_weather_type(openweather_dict: dict) -> WeatherType:
     try:
-        weather_type_id = str(openweather_dict["weather"][0]["id"])
+        return _resolve_weather_type(openweather_dict["weather"][0]["id"])
     except (IndexError, KeyError):
         raise ApiServiceError
-    weather_types = {
-        "2": WeatherType.THUNDERSTORM,
-        "3": WeatherType.DRIZZLE,
-        "5": WeatherType.RAIN,
-        "6": WeatherType.SNOW,
-        "7": WeatherType.FOG,
-        "800": WeatherType.CLEAR,
-        "80": WeatherType.CLOUDS,
-    }
-    for _id, _weather_type in weather_types.items():
-        if weather_type_id.startswith(_id):
-            return _weather_type
-    raise ApiServiceError
 
 
 def get_air_quality_type(openweather_dict: dict) -> AirQualityType:
-    """Returns air quality type using AQI"""
+    """Returns air quality type using AQI."""
     try:
         air_type_id = str(openweather_dict["list"][0]["main"]["aqi"])
     except (IndexError, KeyError):
