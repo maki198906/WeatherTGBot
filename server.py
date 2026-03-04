@@ -12,8 +12,11 @@ from aiogram.enums import ContentType, ParseMode
 from aiogram.filters import Command
 from aiogram.types import InlineQueryResultArticle, InputTextMessageContent
 from loguru import logger
+from timezonefinder import TimezoneFinder
 
 import favourites as fav
+import scheduler as sched
+import subscriptions
 from exceptions import WrongInput
 from random_weather import generate_random_coords
 from timezoneutils import sun_condition, timezone
@@ -42,13 +45,16 @@ API_TOKEN = os.getenv("TELEGRAM_API_TOKEN")
 if not API_TOKEN:
     raise RuntimeError("TELEGRAM_API_TOKEN is not set — check your .env file")
 
-# Initialize SQLite database on startup
+# Initialize SQLite tables on startup
 fav.init_db()
+subscriptions.init_subscriptions_table()
 
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 router = Router()
 dp.include_router(router)
+
+_tf = TimezoneFinder()
 
 
 # ---------------------------------------------------------------------------
@@ -98,8 +104,45 @@ async def _send_city_weather(message: types.Message, city: str) -> None:
         raise WrongInput(f'City "{city}" is not defined')
 
 
+async def _send_subscription_weather(user_id: int, city: str) -> None:
+    """Called by the scheduler — sends daily weather directly to a user by ID."""
+    try:
+        response = get_openweather_city_response(city)
+        if response.get("cod") == ERROR:
+            logger.warning(f"Subscription: city '{city}' not found for user {user_id}")
+            return
+        coordinates = get_coordinates_by_city(response)
+        air_response = get_openweather_air_response(coordinates.latitude, coordinates.longitude)
+        air_quality = get_air_quality_type(air_response)
+        weather = get_weather(response)
+        sun_conds = sun_condition(
+            sunrise=time.mktime(weather.sunrise.timetuple()),
+            sunset=time.mktime(weather.sunset.timetuple()),
+            coordinates=coordinates,
+        )
+        area, local_time = timezone(coordinates)
+        weather_text = weather_repr_city(weather)
+        await bot.send_message(
+            user_id,
+            f"\U0001f4cb <b>Cheers! Daily weather for {city}</b>\n\n"
+            f"Time zone: {area}\n"
+            f"Local time: {local_time}\n"
+            f"Air Index Quality: {air_quality.value}\n"
+            f"{'*' * 10}\n"
+            f"{weather_text}"
+            f"{'*' * 10}\n"
+            f"\U0001f305: {sun_conds.sunrise.strftime('%H:%M')}\n"
+            f"\U0001f307: {sun_conds.sunset.strftime('%H:%M')}",
+            parse_mode=ParseMode.HTML,
+            reply_markup=_map_button(coordinates.latitude, coordinates.longitude),
+        )
+        await bot.send_location(user_id, latitude=coordinates.latitude, longitude=coordinates.longitude)
+    except Exception as e:
+        logger.error(f"Failed to send subscription weather to user {user_id}: {e}")
+
+
 # ---------------------------------------------------------------------------
-# Handlers
+# General handlers
 # ---------------------------------------------------------------------------
 
 @router.message(Command("start", "help"))
@@ -115,7 +158,11 @@ async def send_welcome(message: types.Message):
         "\u2764\ufe0f <b>Favourites</b>\n"
         "/save &lt;city&gt; \u2014 save a city (max 3)\n"
         "/my \u2014 show your saved cities\n"
-        "/remove &lt;city&gt; \u2014 remove a saved city",
+        "/remove &lt;city&gt; \u2014 remove a saved city\n\n"
+        "\u23f0 <b>Daily subscription</b>\n"
+        "/subscribe &lt;city&gt; &lt;HH:MM&gt; \u2014 get weather every day at a set time\n"
+        "/unsubscribe \u2014 cancel your subscription\n"
+        "/mysub \u2014 show your current subscription",
         parse_mode=ParseMode.HTML,
     )
 
@@ -253,12 +300,10 @@ async def save_city_command(message: types.Message):
         await message.answer("Please provide a city name:\n/save Stockholm")
         return
     city = parts[1].strip()
-    # Validate city exists on OpenWeather before saving
     response = get_openweather_city_response(city)
     if str(response.get("cod")) == ERROR:
         await message.answer("\u274c That city wasn't found. Check the spelling before saving.")
         return
-    # Use the canonical name returned by OpenWeather (correct capitalisation)
     canonical = response.get("name", city)
     status = fav.save_city(message.from_user.id, canonical)
     if status == "saved":
@@ -312,13 +357,95 @@ async def remove_city_command(message: types.Message):
 @logger.catch
 async def favourite_city_callback(callback: types.CallbackQuery):
     """Fetch and send weather when user taps a favourite city button."""
-    city = callback.data[4:]   # strip the 'fav:' prefix
+    city = callback.data[4:]
     await _send_city_weather(callback.message, city)
     await callback.answer()
 
 
 # ---------------------------------------------------------------------------
-# Catch-all city search (must stay last)
+# Daily subscription
+# ---------------------------------------------------------------------------
+
+@router.message(Command("subscribe"))
+@logger.catch
+async def subscribe_command(message: types.Message):
+    """Subscribe to a daily weather report for a city at a given local time."""
+    parts = message.text.split(maxsplit=2)
+    if len(parts) < 3:
+        await message.answer(
+            "Usage: /subscribe &lt;city&gt; &lt;HH:MM&gt;\n"
+            "Example: /subscribe Stockholm 08:00",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+    city = parts[1].strip()
+    time_str = parts[2].strip()
+
+    # Validate time format
+    try:
+        hour_str, minute_str = time_str.split(":")
+        hour, minute = int(hour_str), int(minute_str)
+        if not (0 <= hour <= 23 and 0 <= minute <= 59):
+            raise ValueError
+    except (ValueError, AttributeError):
+        await message.answer("Invalid time. Use HH:MM format, e.g. 08:00")
+        return
+
+    # Validate city
+    response = get_openweather_city_response(city)
+    if str(response.get("cod")) == ERROR:
+        await message.answer("\u274c City not found. Check the spelling.")
+        return
+
+    canonical = response.get("name", city)
+    coords = get_coordinates_by_city(response)
+    tz_name = _tf.timezone_at(lat=coords.latitude, lng=coords.longitude) or "UTC"
+    send_time = f"{hour:02d}:{minute:02d}"
+
+    sub = dict(user_id=message.from_user.id, city=canonical, send_time=send_time, tz=tz_name)
+    subscriptions.save_subscription(**sub)
+    sched.add_or_replace_job(_send_subscription_weather, sub)
+
+    await message.answer(
+        f"\u23f0 Subscribed!\n"
+        f"You'll receive weather for <b>{canonical}</b> every day at "
+        f"<b>{send_time}</b> ({tz_name}).",
+        parse_mode=ParseMode.HTML,
+    )
+
+
+@router.message(Command("unsubscribe"))
+async def unsubscribe_command(message: types.Message):
+    """Cancel the user's daily weather subscription."""
+    removed = subscriptions.remove_subscription(message.from_user.id)
+    sched.remove_job(message.from_user.id)
+    if removed:
+        await message.answer("\u2705 Your daily subscription has been cancelled.")
+    else:
+        await message.answer("\u2139\ufe0f You don't have an active subscription.")
+
+
+@router.message(Command("mysub"))
+async def mysub_command(message: types.Message):
+    """Show the user's current subscription."""
+    sub = subscriptions.get_subscription(message.from_user.id)
+    if not sub:
+        await message.answer(
+            "You don't have an active subscription.\n"
+            "Use /subscribe &lt;city&gt; &lt;HH:MM&gt; to set one up.",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+    await message.answer(
+        f"\u23f0 <b>Your daily subscription</b>\n"
+        f"City: <b>{sub['city']}</b>\n"
+        f"Time: <b>{sub['send_time']}</b> ({sub['tz']})",
+        parse_mode=ParseMode.HTML,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Catch-all city search (must stay last among message handlers)
 # ---------------------------------------------------------------------------
 
 @router.message()
@@ -375,6 +502,7 @@ async def inline_weather(inline_query: types.InlineQuery):
 
 
 async def main():
+    sched.start(_send_subscription_weather)
     await dp.start_polling(bot)
 
 
