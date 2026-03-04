@@ -2,24 +2,41 @@ import asyncio
 import os
 import time
 
-from loguru import logger
-from aiogram import Bot, Dispatcher, Router, F, types
-from aiogram.filters import Command
-from aiogram.enums import ParseMode, ContentType
+# Load .env FIRST — before any custom module is imported
+from dotenv import load_dotenv
+load_dotenv()
 
-from weather_api_service import (get_openweather_response, get_weather, get_openweather_city_response,
-                                 Coordinates, ERROR, get_coordinates_by_city, get_openweather_air_response,
-                                 get_air_quality_type)
-from timezoneutils import timezone, sun_condition
-from weather_repr import weather_repr, weather_repr_city
+from aiogram import Bot, Dispatcher, F, Router, types
+from aiogram.enums import ContentType, ParseMode
+from aiogram.filters import Command
+from loguru import logger
+
 from exceptions import WrongInput
 from random_weather import generate_random_coords
+from timezoneutils import sun_condition, timezone
+from weather_api_service import (
+    ERROR,
+    Coordinates,
+    get_air_quality_type,
+    get_coordinates_by_city,
+    get_openweather_air_response,
+    get_openweather_city_response,
+    get_openweather_response,
+    get_weather,
+)
+from weather_repr import weather_repr, weather_repr_city
 
 # initialize logging file to catch errors
-logger.add("log_errors.log", format="{time} {level} {message}",
-           rotation="5 MB", compression="zip")
+logger.add(
+    "log_errors.log",
+    format="{time} {level} {message}",
+    rotation="5 MB",
+    compression="zip",
+)
 
 API_TOKEN = os.getenv("TELEGRAM_API_TOKEN")
+if not API_TOKEN:
+    raise RuntimeError("TELEGRAM_API_TOKEN is not set — check your .env file")
 
 # initialize bot, dispatcher and router
 bot = Bot(token=API_TOKEN)
@@ -31,12 +48,14 @@ dp.include_router(router)
 @router.message(Command("start", "help"))
 async def send_welcome(message: types.Message):
     """Returns info what bot is about"""
-    await message.answer("Hi!\nI'm <b>WeWeather</b> Bot\n"
-                         "I can provide you with the weather around you or more\n"
-                         "Just type the city you are looking for\n"
-                         "or type /inplace so the weather around you pops up.\n"
-                         "If you'd like to explore the weather at random spot type /random",
-                         parse_mode=ParseMode.HTML)
+    await message.answer(
+        "Hi!\nI'm <b>WeWeather</b> Bot\n"
+        "I can provide you with the weather around you or more\n"
+        "Just type the city you are looking for\n"
+        "or type /inplace so the weather around you pops up.\n"
+        "If you'd like to explore the weather at random spot type /random",
+        parse_mode=ParseMode.HTML,
+    )
 
 
 def get_keyboard():
@@ -77,20 +96,24 @@ async def send_random_weather(callback: types.CallbackQuery):
     air_index_response = get_openweather_air_response(coordinates.latitude, coordinates.longitude)
     air_index_quality = get_air_quality_type(air_index_response)
     weather = get_weather(openweather_response)
-    sun_conditions = sun_condition(sunrise=time.mktime(weather.sunrise.timetuple()),
-                                   sunset=time.mktime(weather.sunset.timetuple()),
-                                   coordinates=coordinates)
+    sun_conditions = sun_condition(
+        sunrise=time.mktime(weather.sunrise.timetuple()),
+        sunset=time.mktime(weather.sunset.timetuple()),
+        coordinates=coordinates,
+    )
     area, local_time = timezone(coordinates)
     weather_represent = weather_repr(weather)
-    await callback.message.answer(f"Time zone: {area}\n"
-                                  f"Local time: {local_time}\n"
-                                  f"Air Index Quality: {air_index_quality.value}\n"
-                                  f"{'*' * 10}\n"
-                                  f"{weather_represent}"
-                                  f"{'*' * 10}\n"
-                                  f"\U0001f305: {sun_conditions.sunrise.strftime('%H:%M')}\n"
-                                  f"\U0001f307: {sun_conditions.sunset.strftime('%H:%M')}",
-                                  parse_mode=ParseMode.HTML)
+    await callback.message.answer(
+        f"Time zone: {area}\n"
+        f"Local time: {local_time}\n"
+        f"Air Index Quality: {air_index_quality.value}\n"
+        f"{'*' * 10}\n"
+        f"{weather_represent}"
+        f"{'*' * 10}\n"
+        f"\U0001f305: {sun_conditions.sunrise.strftime('%H:%M')}\n"
+        f"\U0001f307: {sun_conditions.sunset.strftime('%H:%M')}",
+        parse_mode=ParseMode.HTML,
+    )
     await callback.message.answer_location(latitude=coordinates.latitude, longitude=coordinates.longitude)
     await callback.answer()
 
@@ -106,22 +129,25 @@ async def weather_by_location(message: types.Message):
     air_index_response = get_openweather_air_response(coordinates.latitude, coordinates.longitude)
     weather = get_weather(openweather_response)
     air_index_quality = get_air_quality_type(air_index_response)
-    sun_conditions = sun_condition(sunrise=time.mktime(weather.sunrise.timetuple()),
-                                   sunset=time.mktime(weather.sunset.timetuple()),
-                                   coordinates=coordinates)
+    sun_conditions = sun_condition(
+        sunrise=time.mktime(weather.sunrise.timetuple()),
+        sunset=time.mktime(weather.sunset.timetuple()),
+        coordinates=coordinates,
+    )
     area, local_time = timezone(coordinates)
     weather_represent = weather_repr(weather)
-
-    await message.answer(f"Time zone: {area}\n"
-                         f"Local time: {local_time}\n"
-                         f"Air Index Quality: {air_index_quality.value}\n"
-                         f"{'*' * 10}\n"
-                         f"{weather_represent}"
-                         f"{'*' * 10}\n"
-                         f"\U0001f305: {sun_conditions.sunrise.strftime('%H:%M')}\n"
-                         f"\U0001f307: {sun_conditions.sunset.strftime('%H:%M')}",
-                         reply_markup=types.ReplyKeyboardRemove(),
-                         parse_mode=ParseMode.HTML)
+    await message.answer(
+        f"Time zone: {area}\n"
+        f"Local time: {local_time}\n"
+        f"Air Index Quality: {air_index_quality.value}\n"
+        f"{'*' * 10}\n"
+        f"{weather_represent}"
+        f"{'*' * 10}\n"
+        f"\U0001f305: {sun_conditions.sunrise.strftime('%H:%M')}\n"
+        f"\U0001f307: {sun_conditions.sunset.strftime('%H:%M')}",
+        reply_markup=types.ReplyKeyboardRemove(),
+        parse_mode=ParseMode.HTML,
+    )
 
 
 @router.message(Command("inplace"))
@@ -142,18 +168,22 @@ async def weather_by_city(message: types.Message):
         air_index_quality = get_air_quality_type(air_index_response)
         area, local_time = timezone(coordinates)
         weather = get_weather(openweather_city_response)
-        sun_conditions = sun_condition(sunrise=time.mktime(weather.sunrise.timetuple()),
-                                       sunset=time.mktime(weather.sunset.timetuple()),
-                                       coordinates=coordinates)
+        sun_conditions = sun_condition(
+            sunrise=time.mktime(weather.sunrise.timetuple()),
+            sunset=time.mktime(weather.sunset.timetuple()),
+            coordinates=coordinates,
+        )
         weather_represent = weather_repr_city(weather)
-        await message.answer(f"Time zone: {area}\n"
-                             f"Local time: {local_time}\n"
-                             f"Air Index Quality: {air_index_quality.value}\n"
-                             f"{'*' * 10}\n"
-                             f"{weather_represent}"
-                             f"{'*' * 10}\n"
-                             f"\U0001f305: {sun_conditions.sunrise.strftime('%H:%M')}\n"
-                             f"\U0001f307: {sun_conditions.sunset.strftime('%H:%M')}")
+        await message.answer(
+            f"Time zone: {area}\n"
+            f"Local time: {local_time}\n"
+            f"Air Index Quality: {air_index_quality.value}\n"
+            f"{'*' * 10}\n"
+            f"{weather_represent}"
+            f"{'*' * 10}\n"
+            f"\U0001f305: {sun_conditions.sunrise.strftime('%H:%M')}\n"
+            f"\U0001f307: {sun_conditions.sunset.strftime('%H:%M')}"
+        )
         await bot.send_location(message.chat.id, latitude=coordinates.latitude, longitude=coordinates.longitude)
     else:
         await message.answer("Oops, looks like there is no such city\nCheck the spelling")
