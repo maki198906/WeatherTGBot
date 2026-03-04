@@ -1,6 +1,8 @@
 .idea/
 __pycache__/
 W_Teleg_env/
+venv/
 *.log
 .env
 .pytest_cache
+favourites.db

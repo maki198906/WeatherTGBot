@@ -13,6 +13,7 @@ from aiogram.filters import Command
 from aiogram.types import InlineQueryResultArticle, InputTextMessageContent
 from loguru import logger
 
+import favourites as fav
 from exceptions import WrongInput
 from random_weather import generate_random_coords
 from timezoneutils import sun_condition, timezone
@@ -41,11 +42,18 @@ API_TOKEN = os.getenv("TELEGRAM_API_TOKEN")
 if not API_TOKEN:
     raise RuntimeError("TELEGRAM_API_TOKEN is not set — check your .env file")
 
+# Initialize SQLite database on startup
+fav.init_db()
+
 bot = Bot(token=API_TOKEN)
 dp = Dispatcher()
 router = Router()
 dp.include_router(router)
 
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 def _map_button(lat: float, lon: float) -> types.InlineKeyboardMarkup:
     """Inline keyboard with a direct link to the OpenWeatherMap map."""
@@ -58,6 +66,42 @@ def _map_button(lat: float, lon: float) -> types.InlineKeyboardMarkup:
     )
 
 
+async def _send_city_weather(message: types.Message, city: str) -> None:
+    """Fetch and send current weather for a city. Shared by city search and favourite buttons."""
+    response = get_openweather_city_response(city)
+    if response["cod"] != ERROR:
+        coordinates = get_coordinates_by_city(response)
+        air_index_response = get_openweather_air_response(coordinates.latitude, coordinates.longitude)
+        air_index_quality = get_air_quality_type(air_index_response)
+        area, local_time = timezone(coordinates)
+        weather = get_weather(response)
+        sun_conditions = sun_condition(
+            sunrise=time.mktime(weather.sunrise.timetuple()),
+            sunset=time.mktime(weather.sunset.timetuple()),
+            coordinates=coordinates,
+        )
+        weather_represent = weather_repr_city(weather)
+        await message.answer(
+            f"Time zone: {area}\n"
+            f"Local time: {local_time}\n"
+            f"Air Index Quality: {air_index_quality.value}\n"
+            f"{'*' * 10}\n"
+            f"{weather_represent}"
+            f"{'*' * 10}\n"
+            f"\U0001f305: {sun_conditions.sunrise.strftime('%H:%M')}\n"
+            f"\U0001f307: {sun_conditions.sunset.strftime('%H:%M')}",
+            reply_markup=_map_button(coordinates.latitude, coordinates.longitude),
+        )
+        await bot.send_location(message.chat.id, latitude=coordinates.latitude, longitude=coordinates.longitude)
+    else:
+        await message.answer("Oops, looks like there is no such city\nCheck the spelling")
+        raise WrongInput(f'City "{city}" is not defined')
+
+
+# ---------------------------------------------------------------------------
+# Handlers
+# ---------------------------------------------------------------------------
+
 @router.message(Command("start", "help"))
 async def send_welcome(message: types.Message):
     """Returns info about what the bot can do."""
@@ -65,9 +109,13 @@ async def send_welcome(message: types.Message):
         "Hi!\nI'm <b>WeWeather</b> Bot\n"
         "I can provide you with the weather around you or more\n\n"
         "\U0001f4cd Just type a city name to get current weather\n"
-        "\U0001f4c5 Use /forecast &lt;city&gt; for a 5-day forecast\n"
-        "\U0001f4cc Use /inplace to share your location\n"
-        "\U0001f3b2 Use /random for weather at a random spot",
+        "\U0001f4c5 /forecast &lt;city&gt; \u2014 5-day forecast\n"
+        "\U0001f4cc /inplace \u2014 weather at your current location\n"
+        "\U0001f3b2 /random \u2014 weather at a random spot\n\n"
+        "\u2764\ufe0f <b>Favourites</b>\n"
+        "/save &lt;city&gt; \u2014 save a city (max 3)\n"
+        "/my \u2014 show your saved cities\n"
+        "/remove &lt;city&gt; \u2014 remove a saved city",
         parse_mode=ParseMode.HTML,
     )
 
@@ -192,39 +240,97 @@ async def forecast_command(message: types.Message):
     )
 
 
+# ---------------------------------------------------------------------------
+# Favourite cities
+# ---------------------------------------------------------------------------
+
+@router.message(Command("save"))
+@logger.catch
+async def save_city_command(message: types.Message):
+    """Save a city to the user's favourites."""
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
+        await message.answer("Please provide a city name:\n/save Stockholm")
+        return
+    city = parts[1].strip()
+    # Validate city exists on OpenWeather before saving
+    response = get_openweather_city_response(city)
+    if str(response.get("cod")) == ERROR:
+        await message.answer("\u274c That city wasn't found. Check the spelling before saving.")
+        return
+    # Use the canonical name returned by OpenWeather (correct capitalisation)
+    canonical = response.get("name", city)
+    status = fav.save_city(message.from_user.id, canonical)
+    if status == "saved":
+        await message.answer(f"\u2764\ufe0f <b>{canonical}</b> saved to your favourites!", parse_mode=ParseMode.HTML)
+    elif status == "duplicate":
+        await message.answer(f"\u2139\ufe0f <b>{canonical}</b> is already in your favourites.", parse_mode=ParseMode.HTML)
+    elif status == "limit_reached":
+        await message.answer(
+            f"\u26a0\ufe0f You already have {fav.MAX_CITIES} cities saved.\n"
+            "Remove one first with /remove &lt;city&gt;",
+            parse_mode=ParseMode.HTML,
+        )
+
+
+@router.message(Command("my"))
+async def my_cities_command(message: types.Message):
+    """Show the user's saved favourite cities as tappable buttons."""
+    cities = fav.get_cities(message.from_user.id)
+    if not cities:
+        await message.answer(
+            "You have no saved cities yet.\nUse /save &lt;city&gt; to add one.",
+            parse_mode=ParseMode.HTML,
+        )
+        return
+    keyboard = types.InlineKeyboardMarkup(
+        inline_keyboard=[
+            [types.InlineKeyboardButton(text=f"\U0001f324 {city}", callback_data=f"fav:{city}")]
+            for city in cities
+        ]
+    )
+    await message.answer("\u2764\ufe0f Your favourite cities:", reply_markup=keyboard)
+
+
+@router.message(Command("remove"))
+@logger.catch
+async def remove_city_command(message: types.Message):
+    """Remove a city from the user's favourites."""
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
+        await message.answer("Please provide a city name:\n/remove Stockholm")
+        return
+    city = parts[1].strip()
+    removed = fav.remove_city(message.from_user.id, city)
+    if removed:
+        await message.answer(f"\U0001f5d1 <b>{city}</b> removed from your favourites.", parse_mode=ParseMode.HTML)
+    else:
+        await message.answer(f"\u2139\ufe0f <b>{city}</b> wasn't in your favourites.", parse_mode=ParseMode.HTML)
+
+
+@router.callback_query(F.data.startswith("fav:"))
+@logger.catch
+async def favourite_city_callback(callback: types.CallbackQuery):
+    """Fetch and send weather when user taps a favourite city button."""
+    city = callback.data[4:]   # strip the 'fav:' prefix
+    await _send_city_weather(callback.message, city)
+    await callback.answer()
+
+
+# ---------------------------------------------------------------------------
+# Catch-all city search (must stay last)
+# ---------------------------------------------------------------------------
+
 @router.message()
 @logger.catch
 async def weather_by_city(message: types.Message):
     """Returns current weather for a typed city name."""
-    openweather_city_response = get_openweather_city_response(message.text)
-    if openweather_city_response["cod"] != ERROR:
-        coordinates = get_coordinates_by_city(openweather_city_response)
-        air_index_response = get_openweather_air_response(coordinates.latitude, coordinates.longitude)
-        air_index_quality = get_air_quality_type(air_index_response)
-        area, local_time = timezone(coordinates)
-        weather = get_weather(openweather_city_response)
-        sun_conditions = sun_condition(
-            sunrise=time.mktime(weather.sunrise.timetuple()),
-            sunset=time.mktime(weather.sunset.timetuple()),
-            coordinates=coordinates,
-        )
-        weather_represent = weather_repr_city(weather)
-        await message.answer(
-            f"Time zone: {area}\n"
-            f"Local time: {local_time}\n"
-            f"Air Index Quality: {air_index_quality.value}\n"
-            f"{'*' * 10}\n"
-            f"{weather_represent}"
-            f"{'*' * 10}\n"
-            f"\U0001f305: {sun_conditions.sunrise.strftime('%H:%M')}\n"
-            f"\U0001f307: {sun_conditions.sunset.strftime('%H:%M')}",
-            reply_markup=_map_button(coordinates.latitude, coordinates.longitude),
-        )
-        await bot.send_location(message.chat.id, latitude=coordinates.latitude, longitude=coordinates.longitude)
-    else:
-        await message.answer("Oops, looks like there is no such city\nCheck the spelling")
-        raise WrongInput(f'City "{message.text}" is not defined')
+    await _send_city_weather(message, message.text)
 
+
+# ---------------------------------------------------------------------------
+# Inline mode
+# ---------------------------------------------------------------------------
 
 @router.inline_query()
 @logger.catch
