@@ -124,7 +124,7 @@ async def _send_subscription_weather(user_id: int, city: str) -> None:
         weather_text = weather_repr_city(weather)
         await bot.send_message(
             user_id,
-            f"\u2600\ufe0f <b>Good morning! Daily weather for {city}</b>\n\n"
+            f"\U0001f4cb <b>Cheers! Daily weather for {city}</b>\n\n"
             f"Time zone: {area}\n"
             f"Local time: {local_time}\n"
             f"Air Index Quality: {air_quality.value}\n"
