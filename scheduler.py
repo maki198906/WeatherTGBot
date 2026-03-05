@@ -22,6 +22,9 @@ def add_or_replace_job(send_fn, sub: dict) -> None:
         id=_job_id(sub["user_id"]),
         args=[sub["user_id"], sub["city"]],
         replace_existing=True,
+        # If the laptop is asleep or network drops, don't drop the job. 
+        # Run it as soon as the bot wakes up.
+        misfire_grace_time=None,
     )
 
 
